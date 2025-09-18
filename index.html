@@ -72,7 +72,7 @@
       document.getElementById('ip').innerText = ip;
 
       // Send to backend to register / update
-      const resp = await fetch('http://10.6.21.233:5000/api/user', {
+      const resp = await fetch('https://user-track-x375.onrender.com/api/user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fingerprint, ip })
@@ -109,7 +109,7 @@
       document.querySelectorAll('button[data-btn-id]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const btnId = btn.getAttribute('data-btn-id');
-          await fetch('http://10.6.21.233:5000/api/button_click', {
+          await fetch('https://user-track-x375.onrender.com/api/button_click', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fingerprint, button_id: btnId })
@@ -130,7 +130,7 @@
       document.querySelectorAll('a[data-link-id]').forEach(a => {
         a.addEventListener('click', async () => {
           const linkId = a.getAttribute('data-link-id');
-          await fetch('http://10.6.21.233:5000/api/link_click', {
+          await fetch('https://user-track-x375.onrender.com/api/link_click', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ fingerprint, link_id: linkId })
@@ -150,3 +150,4 @@
   </script>
 </body>
 </html>
+
