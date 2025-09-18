@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>User Tracker Demo</title>
+  <style>
+    .btn { padding: 10px 20px; margin: 5px; color: white; border: none; cursor: pointer; }
+    .btn.red { background-color: red; }
+    .btn.green { background-color: green; }
+    .btn.blue { background-color: blue; }
+    .btn.clicked { opacity: 0.5; }
+    .link { margin: 5px; display: block; }
+  </style>
+</head>
+<body>
+  <h1>User Tracking Demo</h1>
+  <div>
+    <strong>Your IP:</strong> <span id="ip">loading...</span><br>
+    <strong>Your Fingerprint ID:</strong> <span id="fp">loading...</span><br>
+    <strong>Visits:</strong> <span id="visits">loading...</span><br>
+    <strong>Buttons clicked:</strong>
+    <ul id="buttons-info"></ul>
+    <strong>Links clicked:</strong>
+    <ul id="links-info"></ul>
+  </div>
+  <div>
+    <button class="btn red" data-btn-id="red">Red Button</button>
+    <button class="btn green" data-btn-id="green">Green Button</button>
+    <button class="btn blue" data-btn-id="blue">Blue Button</button>
+  </div>
+  <div>
+    <a href="https://example.com/page1" class="link" data-link-id="page1" target="_blank">Sample Link 1</a>
+    <a href="https://example.com/page2" class="link" data-link-id="page2" target="_blank">Sample Link 2</a>
+    <a href="https://example.com/page3" class="link" data-link-id="page3" target="_blank">Sample Link 3</a>
+  </div>
+
+  <script>
+    // Utility: fingerprint generation (simplified)
+    function generateFingerprint() {
+      const ua = navigator.userAgent;
+      const resolution = `${screen.width}x${screen.height}`;
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const lang = navigator.language;
+      // could add more, hash them
+      let raw = ua + "|" + resolution + "|" + tz + "|" + lang;
+      // simple hash function
+      let hash = 0;
+      for (let i = 0; i < raw.length; i++) {
+        const chr = raw.charCodeAt(i);
+        hash = ((hash << 5) - hash) + chr;
+        hash |= 0; // convert to 32bit int
+      }
+      return "fp_" + Math.abs(hash);
+    }
+
+    async function fetchIP() {
+      try {
+        let resp = await fetch('https://api.ipify.org?format=json');
+        let data = await resp.json();
+        return data.ip;
+      } catch (e) {
+        console.error("Failed to fetch IP", e);
+        return "unknown";
+      }
+    }
+
+    async function init() {
+      const fingerprint = generateFingerprint();
+      document.getElementById('fp').innerText = fingerprint;
+
+      const ip = await fetchIP();
+      document.getElementById('ip').innerText = ip;
+
+      // Send to backend to register / update
+      const resp = await fetch('http://10.6.21.233:5000/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint, ip })
+      });
+      const userData = await resp.json();
+      // userData should contain: first_visit, visit_count, button_clicks, link_clicks
+
+      document.getElementById('visits').innerText = userData.visit_count;
+
+      // Render buttons info
+      const btnList = document.getElementById('buttons-info');
+      btnList.innerHTML = '';
+      for (let [btnId, count] of Object.entries(userData.button_clicks || {})) {
+        let li = document.createElement('li');
+        li.innerText = `${btnId}: clicked ${count} time(s)`;
+        btnList.appendChild(li);
+        // Mark if clicked at least once
+        if (count > 0) {
+          let btn = document.querySelector(`button[data-btn-id="${btnId}"]`);
+          if (btn) btn.classList.add('clicked');
+        }
+      }
+
+      // Render links info
+      const linkList = document.getElementById('links-info');
+      linkList.innerHTML = '';
+      for (let [linkId, count] of Object.entries(userData.link_clicks || {})) {
+        let li = document.createElement('li');
+        li.innerText = `${linkId}: clicked ${count} time(s)`;
+        linkList.appendChild(li);
+      }
+
+      // Add click listeners for buttons
+      document.querySelectorAll('button[data-btn-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const btnId = btn.getAttribute('data-btn-id');
+          await fetch('http://10.6.21.233:5000/api/button_click', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fingerprint, button_id: btnId })
+          });
+          // Update UI (you could re‑fetch userData or update locally)
+          // Simple: increment the count locally
+          const prev = userData.button_clicks[btnId] || 0;
+          userData.button_clicks[btnId] = prev + 1;
+          btn.classList.add('clicked');
+          // re‑render buttons-info
+          const li = document.createElement('li');
+          li.innerText = `${btnId}: clicked ${userData.button_clicks[btnId]} time(s)`;
+          btnList.appendChild(li);
+        });
+      });
+
+      // Add click listeners for links
+      document.querySelectorAll('a[data-link-id]').forEach(a => {
+        a.addEventListener('click', async () => {
+          const linkId = a.getAttribute('data-link-id');
+          await fetch('http://10.6.21.233:5000/api/link_click', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fingerprint, link_id: linkId })
+          });
+          const prev = userData.link_clicks[linkId] || 0;
+          userData.link_clicks[linkId] = prev + 1;
+          // re‑render links info
+          const li = document.createElement('li');
+          li.innerText = `${linkId}: clicked ${userData.link_clicks[linkId]} time(s)`;
+          linkList.appendChild(li);
+        });
+      });
+
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
