@@ -34,7 +34,7 @@
     <a href="https://example.com/page3" class="link" data-link-id="page3" target="_blank">Sample Link 3</a>
   </div>
 
-  <script>
+  <!-- <script>
     // Utility: fingerprint generation (simplified)
     function generateFingerprint() {
       const ua = navigator.userAgent;
@@ -147,7 +147,167 @@
     }
 
     window.onload = init;
-  </script>
+  </script> -->
+  <script>
+  function generateRandomID(length = 16) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
+  function isMobileDevice() {
+    const ua = navigator.userAgent || navigator.vendor || window.opera;
+    return /android|iphone|ipad|iPod|windows phone/i.test(ua.toLowerCase());
+  }
+
+  function generateAdvancedFingerprint() {
+    const ua = navigator.userAgent;
+    const platform = navigator.platform;
+    const vendor = navigator.vendor;
+    const resolution = `${screen.width}x${screen.height}`;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const lang = navigator.language;
+    const deviceType = isMobileDevice() ? "mobile" : "desktop";
+
+    const browserData = `${ua}|${platform}|${vendor}|${resolution}|${tz}|${lang}|${deviceType}`;
+
+    let hash = 0;
+    for (let i = 0; i < browserData.length; i++) {
+      const chr = browserData.charCodeAt(i);
+      hash = ((hash << 5) - hash) + chr;
+      hash |= 0;
+    }
+
+    return `fp_${Math.abs(hash)}`;
+  }
+
+  function setCookie(name, value, days = 365) {
+    const expires = new Date(Date.now() + days * 864e5).toUTCString();
+    document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/`;
+  }
+
+  function getCookie(name) {
+    return document.cookie.split('; ').reduce((r, v) => {
+      const parts = v.split('=');
+      return parts[0] === name ? decodeURIComponent(parts[1]) : r;
+    }, null);
+  }
+
+  async function fetchIP() {
+    try {
+      let resp = await fetch('https://api.ipify.org?format=json');
+      let data = await resp.json();
+      return data.ip;
+    } catch (e) {
+      console.error("Failed to fetch IP", e);
+      return "unknown";
+    }
+  }
+
+  async function init() {
+    const fingerprint = generateAdvancedFingerprint(); // includes mobile/desktop + OS info
+    const uuidCookie = getCookie("uuid");
+    const uuidSession = sessionStorage.getItem("uuid");
+
+    let userId, cleanFingerprint = fingerprint.replace("fp_", "");
+
+    // First-time user
+    if (!uuidCookie || !uuidSession) {
+      userId = generateRandomID(16);
+
+      // Store in cookies + sessionStorage
+      setCookie("uuid", userId);
+      setCookie("uuid_map", cleanFingerprint);
+
+      sessionStorage.setItem("uuid", userId);
+      sessionStorage.setItem("uuid_map", cleanFingerprint);
+
+      console.log("New user identified:", userId);
+    } else {
+      userId = uuidCookie;
+      console.log("Returning user:", userId);
+    }
+
+    // Show on page
+    document.getElementById("fp").innerText = fingerprint;
+
+    const ip = await fetchIP();
+    document.getElementById("ip").innerText = ip;
+
+    // Send data to backend
+    const resp = await fetch("https://user-track-x375.onrender.com/api/user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fingerprint, ip, uuid: userId })
+    });
+    const userData = await resp.json();
+    document.getElementById("visits").innerText = userData.visit_count;
+
+    // Load previous activity
+    const btnList = document.getElementById("buttons-info");
+    btnList.innerHTML = '';
+    for (let [btnId, count] of Object.entries(userData.button_clicks || {})) {
+      let li = document.createElement('li');
+      li.innerText = `${btnId}: clicked ${count} time(s)`;
+      btnList.appendChild(li);
+      if (count > 0) {
+        let btn = document.querySelector(`button[data-btn-id="${btnId}"]`);
+        if (btn) btn.classList.add('clicked');
+      }
+    }
+
+    const linkList = document.getElementById("links-info");
+    linkList.innerHTML = '';
+    for (let [linkId, count] of Object.entries(userData.link_clicks || {})) {
+      let li = document.createElement('li');
+      li.innerText = `${linkId}: clicked ${count} time(s)`;
+      linkList.appendChild(li);
+    }
+
+    // Handle button clicks
+    document.querySelectorAll('button[data-btn-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const btnId = btn.getAttribute('data-btn-id');
+        await fetch("https://user-track-x375.onrender.com/api/button_click", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fingerprint, button_id: btnId })
+        });
+
+        const prev = userData.button_clicks[btnId] || 0;
+        userData.button_clicks[btnId] = prev + 1;
+        btn.classList.add('clicked');
+        const li = document.createElement('li');
+        li.innerText = `${btnId}: clicked ${userData.button_clicks[btnId]} time(s)`;
+        btnList.appendChild(li);
+      });
+    });
+
+    // Handle link clicks
+    document.querySelectorAll('a[data-link-id]').forEach(a => {
+      a.addEventListener('click', async () => {
+        const linkId = a.getAttribute('data-link-id');
+        await fetch("https://user-track-x375.onrender.com/api/link_click", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fingerprint, link_id: linkId })
+        });
+        const prev = userData.link_clicks[linkId] || 0;
+        userData.link_clicks[linkId] = prev + 1;
+        const li = document.createElement('li');
+        li.innerText = `${linkId}: clicked ${userData.link_clicks[linkId]} time(s)`;
+        linkList.appendChild(li);
+      });
+    });
+  }
+
+  window.onload = init;
+</script>
+
 </body>
 </html>
+
 
